@@ -1,7 +1,6 @@
-// SPDX-License-Identifier: MIT
 pragma solidity ^0.7.4;
-contract AccessControlled {
-    // Data Variables
+contract AccessControl {
+    
     address admin;      // Admin address
     
     // constructor to set the admin when contract is deployed
@@ -9,7 +8,7 @@ contract AccessControlled {
         admin = _owner;
     }
     
-    // Modifiers
+    
     modifier onlyAdmin(address _sender) {
         require(_sender == admin, "Only the Admin can perform this operation");
         _;

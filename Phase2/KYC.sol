@@ -1,9 +1,8 @@
 pragma solidity ^0.7.4;
 pragma experimental ABIEncoderV2;
 
-import './AccessControlled.sol';        // This file contains all the access controlled information
-
-contract KYC is AccessControlled {
+import './AccessControl.sol';        
+contract KYC is AccessControl {
     // Declarations
     // Structure defined for details of customer
     struct Customer {
