@@ -1,400 +1,433 @@
-pragma solidity ^0.7.4;
-pragma experimental ABIEncoderV2;
+pragma solidity ^0.5.0;
 
-import './AccessControl.sol';        
-contract KYC is AccessControl {
-    // Declarations
-    // Structure defined for details of customer
+contract kyc {
+    
+    // admin variable to store the address of the admin
+    address admin;
+    
+    //  Struct customer
+    //  uname - username of the customer
+    //  dataHash - customer data
+    //  rating - rating given to customer given based on regularity
+    //  upvotes - number of upvotes recieved from banks
+    //  bank - address of bank that validated the customer account
+
     struct Customer {
-        bytes32 userName;           // User Name of the Customer (bytes instead of string)          
-        bytes32 custData;           // KYC Data of the Customer
-        bool    kycStatus;          // KYC status of the customer true means verified, false means unverified
-        uint    downVotes;          // Number of down votes given by the banks
-        uint    upVotes;            // Number of up votes given by the banks
-        address bank;               // address of the bank who has verified the customer
+        string uname;
+        string dataHash;
+        uint rating;
+        uint upvotes;
+        address bank;
+        string password;
     }
-    
-    // Structure defined for bank details
-    struct Bank {
-        bytes32 bankName;           // Name of the bank
-        address ethAddress;         // Address of the bank (Here address denotes the account address of the bank in blockchain)
-        uint    report;             // Number of reports provided by the banks
-        uint    kycCount;           // Number of customers Verfied by the bank
-        bool    kycPermission;      // Permission for KYC - true means bank have permission, false means bank don't have permission
-        bytes32 regNumber;          // Registration Number of the bank
-    }
-    
-    // Structure defined for KYC Request
-    struct KYCRequest {
-        bytes32 userName;          
-        address bankAddress;        
-        bytes32 custData;           
-    }
-    
-    mapping(bytes32 => Customer) customerList;          // List of all the customers (Mapping is done as customer name => customer deatils)
-    mapping(address => Bank) bankList;                  // List of all the banks (Mapping is done as account address of the bank => bank details)
-    mapping(bytes32 => KYCRequest[]) requestList;       // List of all the request raised (Mapping is done as customer name => array of requests raised for that customer)
-    
-    // Data Varaibles
-    uint noOfRequest;               // Number of request raised for a particular customer         
-    uint noOfAccount;               // Number of bank accounts in the system
-    KYCRequest request;             // Request data to store 
-    
-    
-    // Constructor
-    // calling the parent constructor to sets the admin value and initalizing all the data variables as blank or zero
-    constructor() AccessControlled(msg.sender) {
-        noOfRequest = 0;
-        noOfAccount = 0;
-        request.userName = "";
-        request.bankAddress = address(0);
-        request.custData = "";
-    }
-    
-    // Events
-    
-    event addRequestEvent(bytes32 CustomerUserName, bytes32 CustomerData, address AddeddBy);        // Add a Request Event
-    event addCustomerEvent(bytes32 CustomerUserName, bytes32 CustomerData, address VerifiedBy);     // Add a Customer Event
-    event removeRequestEvent(bytes32 CustomerUserName, bytes32 CustomerData, address RemovedBy);    // Remove a Request Event
-    event removeCustomerEvent(bytes32 CustomeUserName, address RemovedBy);                          // Remove a Customer Event
-    event upvoteCustomerEvent(bytes32 CustomeUserName, address UpVotedBy);                          // Upvote a Customer Event
-    event downvoteCustomerEvent(bytes32 CustomeUserName, address DownVotedBy);                      // Down Vote a Customer Event
-    event modifyCustomerEvent(bytes32 CustomeUserName, bytes32 ModifiedData, address ModifiedBy);   // Modify a customer Event
-    event reportBankEvent(address ReportedBank, address ReportedBy);                                // Report a Bank Event
-    event addBankEvent(bytes32 BankName, address BankAddress, bytes32 BankRegistrationNumber);      // Add a Bank Event
-    event modifyBankKYCPermissionEvent(address KYCModifiedOf, bool KYCModifiedAs);                  // Modify a KYC Permission Event
-    event removeBankEvent(address RemovedBank);                                                     // Remove a Bank Event
-    
-    
-    // Operations
-    function addRequest(bytes32 userName, bytes32 userData) 
-                                                    onlyBank(msg.sender)                // Only Bank can perform 
-                                                    checkBank(msg.sender, 1)            // Bank should be a registered bank
-                                                    checkPermission(msg.sender)         // Bank should have KYC Permission
-                                                    checkRequest(userName, userData, 2) // Request should not be present in request list
-                                                    external returns(bool) {
-        // Creating a request data
-        request.userName = userName;            
-        request.bankAddress = msg.sender;
-        request.custData = userData;
-        
-        // Adding the request in request list
-        requestList[userName].push(request);
-        
-        // Calling the add a request event
-        emit addRequestEvent(userName, userData, msg.sender);
-        return true;
-    }
-    
-    function addCustomer(bytes32 userName, bytes32 userData)
-                                                    onlyBank(msg.sender)                // Only Bank can perform 
-                                                    checkBank(msg.sender, 1)            // Bank should be a registered bank
-                                                    checkPermission(msg.sender)         // Bank should have KYC Permission
-                                                    checkRequest(userName, userData, 1) // Request should be present in request list
-                                                    checkCustomer(userName, 1)          // Customer should not already be registered
-                                                    external returns(bool) {
-        // Creating and adding the customer data in customer list
-        customerList[userName].userName = userName;
-        customerList[userName].custData = userData;
-        customerList[userName].kycStatus = true;
-        customerList[userName].downVotes = 0;
-        customerList[userName].upVotes = 0;
-        customerList[userName].bank = msg.sender;
-        
-        // Incrementing the KYC count of the bank
-        bankList[msg.sender].kycCount += 1;
 
-        // calling add a customer event
-        emit addCustomerEvent(userName, userData, msg.sender);
-        return true;
+    //  Struct Bank/Organisation
+    //  name - name of the bank/organisation
+    //  ethAddress - ethereum address of the bank/organisation
+    //  rating - rating based on number of valid/invalid verified accounts
+    //  KYC_count - number of KYCs verified by the bank/organisation
+    struct Bank {
+        string name;
+        address ethAddress;
+        uint rating;
+        uint KYC_count;
+        string regNumber;
     }
     
-    function removeRequest(bytes32 userName, bytes32 userData)
-                                                    onlyBank(msg.sender)                // Only Bank can perform
-                                                    checkBank(msg.sender, 1)            // Bank should be a registered bank
-                                                    checkRequest(userName, userData, 1) // Request should be present in request list
-                                                    external returns(bool) {
-        // check if the request is the last request in the array for that customer then delete the last request
-        if(noOfRequest == requestList[userName].length) {
-            requestList[userName].pop();                
+    // Struct KYC_Request
+    // uname - Username will be used to map the KYC request with the customer data. 
+    // bankAddress - Bank address here is a unique account address for the bank, which can be used to track the bank.
+    // dataHash - hash of the data or identification documents provided by the Customer.
+    // isAllowed - request is added by a trusted bank or not.
+    // Bank is not secure, then the IsAllowed is set to false for all the bank requests done by the bank.
+    struct KYC_Request {
+        string uname;
+        address bankAddress;
+        string dataHash;
+        bool isAllowed;
+    }
+    
+    //  Struct finalCustomer
+    //  uname - username of the customer
+    //  dataHash - customer data
+    //  rating - rating given to customer given based on regularity
+    //  upvotes - number of upvotes recieved from banks
+    //  bank - address of bank that validated the customer account
+    struct FinalCustomer {
+        string uname;
+        string dataHash;
+        uint rating;
+        uint upvotes;
+        address bank;
+        string password;
+    }
+    
+    //  List of all customers
+    Customer[] allCustomers;
+
+    //  List of all Banks/Organisations
+    Bank[] allBanks;
+
+    
+    // List of all KYC_Request
+    KYC_Request[] allRequests;
+    
+    // List of all finalCustomers
+    FinalCustomer[] allFinalCustomers;
+    
+    
+    //Setting the admin as the person who deploys the smart contract onto the network.
+    constructor() public {
+        admin = msg.sender;
+    }
+    
+    //ADMIN INTERFACE 
+    
+    //Function is used by the admin to add a bank to the KYC Contract.
+    //@param bankName - Name of the bank
+    //@param bankAddress - Address of the bank
+    //@param bankRegistrationNumber - Bank registration number
+    //@returns isAddedToBankListFlag - whether bank is added to the allBanks or not.
+    function addBank(string memory bankName, address bankAddress, string memory bankRegistrationNumber) public payable returns(bool) {
+        bool isAddedToBankListFlag = false;
+        
+        //verify if the user trying to call this function is admin or not.
+        if(admin==msg.sender) {
+            allBanks.length ++;
+            //Initialise rating=0 and KYC_count=0
+            allBanks[allBanks.length - 1] = Bank(bankName, bankAddress, 0, 0, bankRegistrationNumber);
+            isAddedToBankListFlag = true;
+            return isAddedToBankListFlag;
         }
-        // if not then swap the last request with the request to be deleted and then delete the last request
-        else {
-            requestList[userName][noOfRequest - 1] = requestList[userName][requestList[userName].length - 1];
-            requestList[userName].pop();
-        }
-        
-        // Calling remove a request event
-        emit removeRequestEvent(userName, userData, msg.sender);
-        return true;
+    
+        return isAddedToBankListFlag;
     }
     
-    function removeCustomer(bytes32 userName) 
-                                    onlyBank(msg.sender)                    // Only Bank can perform
-                                    checkBank(msg.sender, 1)                // Bank should be a registered bank
-                                    checkCustomer(userName, 2)              // Customer should be registered
-                                    checkCustomerBank(userName, msg.sender) // Only the bank which added the customer can delete the customer
-                                    external returns(bool) {
-        // delete the customer from the customer list
-        delete customerList[userName];
+    // Function is used by the admin to remove a bank from the KYC Contract. 
+    // You need to verify if the user trying to call this function is admin or not.
+    // @param bankAddress - address of the bank
+    // @returns bool - flag stating the successful removal of the bank from the contract.
+    function removeBank(address bankAddress) public payable returns(bool) {
+        bool isRemovedFromBankListFlag = false;
         
-        // delete all the requests of that customer
-        if(requestList[userName].length != 0) {
-            delete requestList[userName];   
-        }
-        
-        // calling remove a customer event
-        emit removeCustomerEvent(userName, msg.sender);
-        return true;
-    }
-    
-    function viewCustomer(bytes32 userName)
-                                    onlyBank(msg.sender)            // Only Bank can perform
-                                    checkBank(msg.sender, 1)        // Bank should be a registered bank
-                                    checkCustomer(userName, 2)      // Customer should be registered
-                                    external view returns(bytes memory) {
-        // return the user name and the user data of the customer
-        return abi.encodePacked(customerList[userName].userName, customerList[userName].custData);
-    }
-    
-    function upvoteCustomer(bytes32 userName)
-                                    onlyBank(msg.sender)            // Only Bank can perform
-                                    checkBank(msg.sender, 1)        // Bank should be a registered bank
-                                    checkPermission(msg.sender)     // Bank should have KYC Permission
-                                    checkCustomer(userName, 2)      // Customer should be registered
-                                    external returns(bool) {
-        // Increment the number of up vote count of the customer
-        customerList[userName].upVotes += 1;
-        
-        // change the status of the customer based on the number of upvotes
-        customerAuthenticity(userName);
-        
-        // Calling upvote a customer event
-        emit upvoteCustomerEvent(userName, msg.sender);
-        return true;
-    }
-    
-    function downvoteCustomer(bytes32 userName)
-                                        onlyBank(msg.sender)        // Only Bank can perform
-                                        checkBank(msg.sender, 1)    // Bank should be a registered bank
-                                        checkPermission(msg.sender) // Bank should have KYC Permission
-                                        checkCustomer(userName, 2)  // Customer should be registered
-                                        external returns(bool) {
-        // Increment the number of down vote count of the customer
-        customerList[userName].downVotes += 1;
-        
-        // change the status of the customer based on the number of downvotes
-        customerAuthenticity(userName);
-        
-        // Calling down vote a customer event
-        emit downvoteCustomerEvent(userName, msg.sender);
-        return true;
-    }
-    
-    function modifyCustomer(bytes32 userName, bytes32 userData)
-                                                        onlyBank(msg.sender)                    // Only Bank can perform
-                                                        checkBank(msg.sender, 1)                // Bank should be a registered bank
-                                                        checkCustomer(userName, 2)              // Customer should be registered
-                                                        checkCustomerData(userName, userData)   // Customer data should be different form waht stored in the list
-                                                        external returns(bool) {
-        // Updating the customer details also setting the number of upvote and downvotes as 0 and also changing the bank who verified the customer
-        customerList[userName].custData = userData;
-        customerList[userName].upVotes = 0;
-        customerList[userName].downVotes = 0;
-        customerList[userName].bank = msg.sender;
-        
-        // delete all the requests for that customer
-        if(requestList[userName].length != 0){
-            delete requestList[userName];
-        }
-        
-        // Calling modify a customer event 
-        emit modifyCustomerEvent(userName, userData, msg.sender);
-        return true;
-    }
-    
-    function getCustomerStatus(bytes32 userName)
-                                        onlyBank(msg.sender)            // Only Bank can perform
-                                        checkBank(msg.sender, 1)        // Bank should be a registered bank
-                                        checkCustomer(userName, 2)      // Customer should be registered
-                                        external view returns(bool) {
-        // return the KYC status of the customer
-        return customerList[userName].kycStatus;
-    }
-    
-    function reportBank(address bankAddress)
-                                    onlyBank(msg.sender)                        // Only Bank can perform
-                                    checkBank(bankAddress, 1)                   // Bank should be a registered bank
-                                    checkBank(msg.sender, 1)                    // Bank should be a registered bank
-                                    checkReportSender(msg.sender, bankAddress)  // Bank cannot report itself
-                                    external returns(bool) {
-        // Increment the number of reports of the bank
-        bankList[bankAddress].report += 1;
-        
-        // Update the KYC Permission of the bank on the basis of number reports
-        bankAuthenticity(bankAddress);
-        
-        // Calling report a bank event
-        emit reportBankEvent(bankAddress, msg.sender);
-        return true;
-    }
-    
-    function getBankReport(address bankAddress)
-                                        onlyBank(msg.sender)            // Only Bank can perform
-                                        checkBank(bankAddress, 1)       // Bank should be a registered bank
-                                        checkBank(msg.sender, 1)        // Bank should be a registered bank
-                                        external view returns(uint) {
-        // Return the number of reports of that particular bank
-        return bankList[bankAddress].report;
-    }
-    
-    function viewBankDetails(address bankAddress)
-                                        onlyBank(msg.sender)            // Only Bank can perform
-                                        checkBank(bankAddress, 1)       // Bank should be a registered bank
-                                        checkBank(msg.sender, 1)        // Bank should be a registered bank
-                                        external view returns(Bank memory) {
-        // return the bank details
-        return bankList[bankAddress];
-    }
-    
-    function addBank(bytes32 bankName, address bankAddress, bytes32 bankRegNumber)
-                                                                        onlyAdmin(msg.sender)       // Only Admin can perform
-                                                                        checkBank(bankAddress, 2)   // Bank should not be a registered bank
-                                                                        external returns(bool) {
-        // Adding the bank details and setiing the KYC count and number of reports as 0 also KYC Permission as true
-        bankList[bankAddress].bankName = bankName;
-        bankList[bankAddress].ethAddress = bankAddress;
-        bankList[bankAddress].report = 0;
-        bankList[bankAddress].kycCount = 0;
-        bankList[bankAddress].kycPermission = true;
-        bankList[bankAddress].regNumber = bankRegNumber;
-        
-        // Increment the number of account variable
-        noOfAccount += 1;
-        
-        // Calling add a bank event
-        emit addBankEvent(bankName, bankAddress, bankRegNumber);
-        return true;
-    }
-    
-    function modifyBankKYCPermission(address bankAddress)
-                                                onlyAdmin(msg.sender)           // Only Admin can perform
-                                                checkBank(bankAddress, 1)       // Bank should be a registered bank
-                                                external returns(bool) {
-        // Setting the KYC Permission of the bank as true from false or false from true.
-        bankList[bankAddress].kycPermission = !bankList[bankAddress].kycPermission;
-        
-        // Calling modifying KYC Permission event
-        emit modifyBankKYCPermissionEvent(bankAddress, bankList[bankAddress].kycPermission);
-        return true;
-    }
-    
-    function removeBank(address bankAddress)
-                                    onlyAdmin(msg.sender)           // Only Admin can perform
-                                    checkBank(bankAddress, 1)       // Bank should be a registered bank
-                                    external returns(bool) {
-        // Delete the bank from bank list
-        delete bankList[bankAddress];
-        
-        // Calling delete a bank event
-        emit removeBankEvent(bankAddress);
-        return true;
-    }
-    
-    function customerAuthenticity(bytes32 userName) internal {
-        // If number of accounts are more than 5 then for any customer if number of downvotes are more than or equal to the one third of the accounts
-        // then set the KYC Status of that customer as false.
-        if(noOfAccount > 5) {
-            if(customerList[userName].downVotes >= (noOfAccount / 3)) {
-                customerList[userName].kycStatus = false;
-                return;
+        if(admin==msg.sender) {
+            for(uint i = 0; i < allBanks.length; ++ i) {
+                if(allBanks[i].ethAddress == bankAddress) {
+                    for(uint j = i+1;j < allBanks.length; ++ j) {
+                        allBanks[i-1] = allBanks[i];
+                    }
+                    allBanks.length --;
+                    isRemovedFromBankListFlag = true;
+                    return isRemovedFromBankListFlag;
+                }
             }
         }
-        
-        // If number of downvotes are greater than or equal to the number of upvotes then set the KYC status as false.
-        if(customerList[userName].downVotes >= customerList[userName].upVotes) {
-            customerList[userName].kycStatus = false;
-            return;
-        }
-        // If number of upvotes is greater than the number of downvotes and number of downvotes is not more than or equal to the one third
-        // of the accounts then set the KYC status as true.
-        else {
-            customerList[userName].kycStatus = true;  
-            return;
-        }
+        return isRemovedFromBankListFlag;
     }
     
-    function bankAuthenticity(address bankAddress) internal {
-        // If number of accoounts are more than 5 then for any bank if number of reports are greater than or equal to the one third of the accounts 
-        // then set the KYC permission of the bank as false.
-        if(noOfAccount > 5) {
-            if(bankList[bankAddress].report >= (noOfAccount / 3)) {
-                bankList[bankAddress].kycPermission = false;
-                return;
+    // Function is used to fetch the bank details.
+    // @param bankAddress-Bank address
+    // @returns Bank details of type Bank
+    function getBankDetails(address bankAddress) public view returns( string memory name,
+        address ethAddress,
+        uint rating,
+        uint KYC_count,
+        string memory regNumber) {
+        for(uint i = 0; i < allBanks.length; ++ i) {
+            if(allBanks[i].ethAddress == bankAddress) {
+                name = allBanks[i].name;
+                ethAddress = allBanks[i].ethAddress;
+                rating = allBanks[i].rating;
+                KYC_count = allBanks[i].KYC_count;
+                regNumber = allBanks[i].regNumber;
             }
         }
     }
     
-    // Modifiers
-    modifier checkPermission(address _bank){
-        require(bankList[_bank].kycPermission, "Bank not have KYC permission");
-        _;
-    }
+    //BANK INTERFACE
     
-    modifier checkRequest(bytes32 _name, bytes32 _data, uint funcType) {
-        if(funcType == 1) {
-            noOfRequest = requestList[_name].length;
-            require(noOfRequest != 0, "No request has been raised for this customer");   
-        }
-        noOfRequest = 0;
-        for(uint i = 0; i < requestList[_name].length; i++) {
-            if(requestList[_name][i].custData == _data) {
-                noOfRequest = i + 1;
-                break;
+    // Function upvotes to provide ratings on other Banks.
+    // Add and update votes for the banks.
+    // Also need to update the rating for the bank in this function.
+    // @param bankAddress - address of the bank who is getting upvoted
+    // @returns uint
+    function upvotesForBank(address bankAddress) public payable returns(string memory) {
+        for(uint i = 0; i < allBanks.length; ++ i) {
+            if(allBanks[i].ethAddress == bankAddress) {
+                    // Increase the KYC_count for bankAddress
+                    allBanks[i].KYC_count ++;
+                    // Rating for a Bank
+                    allBanks[i].rating = (allBanks[i].KYC_count)/allBanks.length;
+                    //“0” if the rating is successfully updated
+                    string memory s = string(abi.encodePacked(allBanks[i].rating, " ", allBanks[i].KYC_count, " ", allBanks.length));
+                    return s;
             }
         }
-        if(funcType == 1){
-            require(noOfRequest != 0, "Request of the Customer for this data is not requested");
-        }
-        else if(funcType == 2){
-            require(noOfRequest == 0, "Request already raised for this customer and data");
-        }
-        _;
+        // error-bank not found 
+        return "error";
     }
     
-    modifier checkCustomer(bytes32 _name, uint funcType) {
-        if(funcType == 1) {
-            require(customerList[_name].userName != _name, "Customer is already registered");
+    // Function is used to add the KYC request to the KYC_Request requests list.
+    // If the bank rating is less than or equal to 0.5 then assign IsAllowed to false. 
+    // Else assign IsAllowed to true. 
+    // @param userName - customer name as string
+    // @param dataHash - customer data as string
+    // @return value “1” to determine the status of success, value “0” for the failure of the function.
+    function addRequest(string memory userName, string memory dataHash) public payable returns(uint){
+        //bool isAllowedValue;
+        for(uint i = 0; i < allBanks.length; ++ i) {
+                //If the bank rating is less than or equal to 0.5 then assign IsAllowed to false. 
+                //Else assign IsAllowed to true. 
+            if((allBanks[i].ethAddress == msg.sender)) {
+                // Check the rating of the bank
+                if(allBanks[i].rating*10 >= 0.5*10){
+                    allRequests.length ++;
+                    allRequests[allRequests.length - 1] = KYC_Request(userName, msg.sender, dataHash,true);
+                }else{
+                    allRequests.length ++;
+                    allRequests[allRequests.length - 1] = KYC_Request(userName, msg.sender, dataHash,false);
+                }
+                //return "1"-Success
+                return 1;
+            }
         }
-        else if(funcType == 2) {
-            require(customerList[_name].userName == _name, "Customer is not registered");
-        }
-        _;
+        //return "0" - Failure of the function
+        return 0;
     }
     
-    modifier checkCustomerBank(bytes32 _name, address _bank) {
-        require(customerList[_name].bank == _bank, "Customer is not verfied by you");
-        _;
-    }
-    
-    modifier checkCustomerData(bytes32 _name, bytes32 _data) {
-        require(customerList[_name].userName == _name && customerList[_name].custData != _data, 
-                "Customer is already having this data. No modification needed");
-        _;
-    }
-    
-    modifier checkBank(address _bank, uint funcType) {
-        if(funcType == 1) {
-            require(bankList[_bank].ethAddress == _bank, "Bank address is invalid or Bank is not added by admin");
+    // Function will add a customer to the customer list. 
+    // If IsAllowed is false then don't process the request. 
+    // @param userName - customer name as the string
+    // @param dataHash - customer data as string
+    // @return value “1” to determine the status of success
+    // @return value “0” for the failure of the function.
+    function addCustomer(string memory userName, string memory dataHash) public payable returns(uint) {
+        //  throw error if username already in use
+        for(uint i = 0;i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName))
+                // Failure of the function as user already exists
+                return 0;
         }
-        else if(funcType == 2) {
-            require(bankList[_bank].ethAddress != _bank, "Bank address is already added");
+        
+        // If IsAllowed is false then dont process the request.
+        for(uint i = 0; i < allRequests.length; ++i) {
+            if(stringsEquals(allRequests[i].uname, userName) && allRequests[i].bankAddress == msg.sender && allRequests[i].isAllowed && stringsEquals(allRequests[i].dataHash,dataHash)) {
+                allCustomers.length ++;
+                // set rating = 0, upvotes = 0, bank = current node, password = 0
+                allCustomers[allCustomers.length-1] = Customer(userName, dataHash, 0, 0, msg.sender, "0");
+                return 1;
+            }
         }
-        _;
+        // If request doesnot exists in the KYC_Request list.
+        return 0;
     }
     
-    modifier checkReportSender(address _sender, address _bank) {
-        require(_sender != _bank, "You can't report to yourself");
-        _;
+    // Function will remove the request from the requests list.
+    // @param userName - customer name as string
+    // @param dataHash - customer data as string
+    // @return value “1” to determine the status of success 
+    //         value “0” for the failure of the function.
+    function removeRequest(string memory userName, string memory dataHash) public payable returns(uint){
+         for(uint i = 0; i < allRequests.length; ++ i) {
+            if(stringsEquals(allRequests[i].uname, userName) && allRequests[i].bankAddress == msg.sender && stringsEquals(allRequests[i].dataHash,dataHash)) {
+                //Remove the request from the requestlist and send status as "1"
+                    for(uint j = i+1;j < allRequests.length; ++ j) {
+                        allRequests[i-1] = allRequests[i];
+                    }
+                    allRequests.length --;
+                    return 1;
+            }
+        }
+        return 0;
+    }
+    
+    // Function will remove the customer from the customer list.
+    // @param userName - customerName
+    // @return value “1” to determine the status of success
+    //         value “0” for the failure of the function
+    function removeCustomer(string memory userName) public payable returns(uint) {
+        for(uint i = 0; i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName)) {
+                for(uint j = i+1;j < allCustomers.length; ++ j) {
+                    allCustomers[i-1] = allCustomers[i];
+                }
+                allCustomers.length --;
+                return 1;
+            }
+        }
+        //  throw error if userName not found
+        return 0;
+    }
+    
+    // Function allows a bank to view details of a customer.
+    // @param userName - customer name as string.
+    // @param password - password for the user.
+    // If the password is not set for the customer, then the incoming password string should be equal to "0".
+    // @return dataHash - hash of the customer data in form of a string
+    function viewCustomer(string memory userName,string memory password) public view returns(string memory) {
+        for(uint i = 0; i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName) && stringsEquals(allCustomers[i].password, password)) {
+                return allCustomers[i].dataHash;
+            }
+        }
+        return "Customer not found in the list!";
+    }
+    
+    // Function fetches the KYC requests for a specific bank.
+    // @param bankAddress - Unique bank address as address is provided to fetch the bank kyc requests.
+    // @returns
+    // List of all the requests initiated by the bank which are yet to be validated.
+    function getBankRequests(address bankAddress) public payable returns(
+        string memory uname,
+        address bankAdressToView,
+        string memory dataHash,
+        bool isAllowed
+        ) {
+        for(uint i=0;i<allRequests.length;++i) {
+            if(allRequests[i].bankAddress == bankAddress) {
+                uname = allRequests[i].uname;
+                bankAdressToView = allRequests[i].bankAddress;
+                dataHash = allRequests[i].dataHash;
+                isAllowed = allRequests[i].isAllowed;
+            }
+        }
+    }
+    
+    // Function is used to fetch bank rating from the smart contract.
+    // @param bankAddress is passed as address to fetch bank ratings.
+    // @returns ratings as unsigned integer.
+    function getBankRating(address bankAddress) public view returns(uint) {
+        for(uint i = 0; i < allBanks.length; ++ i) {
+            if(allBanks[i].ethAddress == bankAddress) {
+                return allBanks[i].rating;
+            }
+        }
+        return 0;
+    }
+    
+    // Function is used to set a password for customer data, which can be later be unlocked by using the password.
+    // @param userName - Username as string
+    // @param password - Password as string
+    // returns bool - A boolean result is returned which determines if the password for the customer has been successfully updated.
+    function setPasswordForCustomerData(string memory userName, string memory password) public payable returns(bool) {
+        for(uint i=0;i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName) && stringsEquals(allCustomers[i].password, "0")) {
+                allCustomers[i].password = password;
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Function allows a bank to cast an upvote for a customer. 
+    // This vote from a bank means that it accepts the customer details as well acknowledge the KYC process done by some bank on the customer.
+    // You also need to update the rating for a customer in this function.
+    // The rating is calculated as the number of upvotes for the customer/total number of banks. 
+    // If rating is more than 0.5, then you can add the customer to the final_customer list.
+    // @param userName as customer name
+    // @return “1” to determine the status of success
+    //   value “0” for the failure of the function.
+    function updateRatingCustomer(string memory userName) public payable returns(uint) {
+        //Total number of banks
+        uint totalNumberOfBanks = allBanks.length;
+        for(uint i = 0; i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName)) {
+                    allCustomers[i].upvotes ++;
+                    allCustomers[i].rating += (allCustomers[i].upvotes/totalNumberOfBanks);
+                    if(allCustomers[i].rating*10 >= 0.5*10){
+                        allFinalCustomers.length++;
+                        allFinalCustomers[allFinalCustomers.length-1]=FinalCustomer(allCustomers[i].uname,allCustomers[i].dataHash,allCustomers[i].rating,allCustomers[i].upvotes,allCustomers[i].bank,allCustomers[i].password);
+                    }
+                return 1;
+            }
+        }
+        //  throw error if bank not found
+        return 0;
+    }
+    
+    // Function is used to fetch the details of FinalCustomer
+    // @param userName - Customer name
+    // @return address - bank address
+    function showFinalCustomer() public view returns(string memory){
+        string memory finalCustomerList;
+        for(uint i = 0; i < allFinalCustomers.length; ++ i) {
+                finalCustomerList = string(abi.encodePacked(allFinalCustomers[i].uname, " ", allFinalCustomers[i].rating, " ", allFinalCustomers[i].upvotes));
+        }
+        return finalCustomerList;
+    }
+    
+    // Function is used to fetch customer rating from the smart contract.
+    // @param userName as customer name
+    // @returns rating as unsigned integer
+    function getCustomerRating(string memory userName) public payable returns(uint) {
+        for(uint i = 0; i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName)) {
+                return allCustomers[i].rating;
+            }
+        }
+        return 0;
+    }
+    
+    
+    // Function allows a bank to modify a customer's data.
+    // Only applicable for the customers whose request have been validated and present in the customer list.
+    // If the user is present in the final customer list then remove it from the final list.
+    // Change the upvotes and rating component of the customer in customer list to "0".
+    // Remove all the previous upvotes for the customer. Hence, banks need to again upvote on the customer to acknowledge the modified data. 
+    // @param username as Customer username
+    // @param password - password of the user, if no password is set then "0"
+    // @param newDataHash - new customer data
+    // @returns value “1” to determine the status of success 
+    //          value “0” for the failure of the function.
+    function modifyCustomer(string memory userName,string memory password, string memory newDataHash) public payable returns(uint) {
+        
+        // If the user is present in the final customer list then remove it from the final list.
+        for(uint i = 0; i < allFinalCustomers.length; ++ i) {
+            if(stringsEquals(allFinalCustomers[i].uname, userName) && stringsEquals(allCustomers[i].password, password)) {
+                for(uint j = i+1;j < allFinalCustomers.length; ++ j) {
+                    allFinalCustomers[i-1] = allFinalCustomers[i];
+                }
+                allFinalCustomers.length --;
+                return 1;
+            }
+        }
+        
+        // Change the upvotes and rating component of the customer in customer list to "0".
+        for(uint i = 0; i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName) && stringsEquals(allCustomers[i].password, password)) {
+                allCustomers[i].dataHash = newDataHash;
+                allCustomers[i].bank = msg.sender;
+                allCustomers[i].upvotes = 0;
+                allCustomers[i].rating = 0;
+                return 1;
+            }
+        }
+        //  value “0” for the failure of the function.
+        return 1;
+    }
+    
+    // Function is used to fetch the bank details which made the last changes to the customer data.
+    // @param userName - Customer name
+    // @return address - bank address
+    function retrieveAccessHistory(string memory userName) public view returns(address){
+        for(uint i = 0; i < allCustomers.length; ++ i) {
+            if(stringsEquals(allCustomers[i].uname, userName)){
+                return allCustomers[i].bank;
+            }
+        }
+    }
+    
+    // Utility Function to check the equality of two string variables
+    function stringsEquals(string storage _a, string memory _b) internal view returns (bool) {
+        bytes storage a = bytes(_a);
+        bytes memory b = bytes(_b); 
+        if (a.length != b.length)
+            return false;
+        for (uint i = 0; i < a.length; i ++)
+        {
+            if (a[i] != b[i])
+                return false;
+        }
+        return true;
     }
 }
